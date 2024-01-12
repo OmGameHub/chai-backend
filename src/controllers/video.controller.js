@@ -179,6 +179,23 @@ const getVideoById = asyncHandler(async (req, res) => {
 const updateVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
+  if (!videoId) {
+    throw new ApiError(400, "videoId is missing");
+  }
+
+  if (!isValidObjectId(videoId)) {
+    throw new ApiError(400, "videoId is invalid");
+  }
+
+  const video = await Video.findById(videoId);
+  if (!video) {
+    throw new ApiError(404, "Video does not exist");
+  }
+
+  if (video.owner.toString() !== req.user?._id.toString()) {
+    throw new ApiError(403, "Forbidden request");
+  }
+
   const { title, description } = req.body;
   if (!title || !description) {
     throw new ApiError(400, "All fields are required");
@@ -196,7 +213,7 @@ const updateVideo = asyncHandler(async (req, res) => {
     videoDetails.thumbnail = thumbnailDetails.url;
   }
 
-  const video = await Video.findByIdAndUpdate(
+  const updatedVideo = await Video.findByIdAndUpdate(
     videoId,
     { $set: videoDetails },
     { new: true }
@@ -210,7 +227,9 @@ const updateVideo = asyncHandler(async (req, res) => {
 
   return res
     .status(200)
-    .json(new ApiResponse(200, video, "Video details updated successfully"));
+    .json(
+      new ApiResponse(200, updatedVideo, "Video details updated successfully")
+    );
 });
 
 const deleteVideo = asyncHandler(async (req, res) => {
@@ -225,11 +244,16 @@ const deleteVideo = asyncHandler(async (req, res) => {
     throw new ApiError(400, "videoId is invalid");
   }
 
-  const video = await Video.findByIdAndDelete(videoId);
+  const video = await Video.findById(videoId);
   if (!video) {
     throw new ApiError(404, "Video does not exist");
   }
 
+  if (video.owner.toString() !== req.user?._id.toString()) {
+    throw new ApiError(403, "Forbidden request");
+  }
+
+  await Video.findByIdAndDelete(videoId);
   return res
     .status(200)
     .json(new ApiResponse(200, {}, "Video deleted successfully"));
@@ -257,6 +281,10 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
 
   if (!video) {
     throw new ApiError(404, "Video does not exist");
+  }
+
+  if (video.owner._id.toString() !== req.user?._id.toString()) {
+    throw new ApiError(403, "Forbidden request");
   }
 
   video.isPublished = !video.isPublished;
