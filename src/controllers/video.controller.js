@@ -1,6 +1,7 @@
 import mongoose, { isValidObjectId } from "mongoose";
 import { Video } from "../models/video.model.js";
 import { User } from "../models/user.model.js";
+import { Like } from "../models/like.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
@@ -8,7 +9,14 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { getMongoosePaginationOptions } from "../utils/helpers.js";
 
 const getAllVideos = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, query, sortBy, sortType, userId } = req.query;
+  const {
+    page = 1,
+    limit = 10,
+    query,
+    sortBy = "createdAt",
+    sortType,
+    userId,
+  } = req.query;
 
   const pipeline = [];
   const matchQuery = {};
@@ -42,6 +50,19 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
   // lookup for the video owner
   pipeline.push(
+    {
+      $lookup: {
+        from: "likes",
+        localField: "_id",
+        foreignField: "video",
+        as: "totalLikes",
+      },
+    },
+    {
+      $addFields: {
+        totalLikes: { $size: "$totalLikes" },
+      },
+    },
     {
       $lookup: {
         from: "users",
@@ -170,6 +191,8 @@ const getVideoById = asyncHandler(async (req, res) => {
 
   video.views++;
   video.save({ validateBeforeSave: false });
+
+  video._doc.totalLikes = await Like.countDocuments({ video: video._id });
 
   return res
     .status(200)
