@@ -5,7 +5,7 @@ import { Like } from "../models/like.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
-import { getAllVideos } from "./video.controller.js";
+import { getMongoosePaginationOptions } from "../utils/helpers.js";
 
 const getChannelStats = asyncHandler(async (req, res) => {
   let userId = req.user._id;
@@ -49,8 +49,68 @@ const getChannelStats = asyncHandler(async (req, res) => {
 });
 
 const getChannelVideos = asyncHandler(async (req, res) => {
-  req.query.userId = req.user._id;
-  getAllVideos(req, res);
+  const { page = 1, limit = 10 } = req.query;
+  const userId = req.user._id;
+
+  const videoAggregate = Video.aggregate([
+    {
+      $match: {
+        owner: new mongoose.Types.ObjectId(userId),
+      },
+    },
+    {
+      $lookup: {
+        from: "likes",
+        localField: "_id",
+        foreignField: "video",
+        as: "totalLikes",
+      },
+    },
+    {
+      $addFields: {
+        totalLikes: { $size: "$totalLikes" },
+      },
+    },
+    {
+      $lookup: {
+        from: "users",
+        localField: "owner",
+        foreignField: "_id",
+        as: "owner",
+        pipeline: [
+          {
+            $project: {
+              fullName: 1,
+              avatar: 1,
+              email: 1,
+              username: 1,
+            },
+          },
+        ],
+      },
+    },
+    {
+      $unwind: "$owner",
+    },
+    {
+      $sort: { createdAt: -1 },
+    },
+  ]);
+  const videos = await Video.aggregatePaginate(
+    videoAggregate,
+    getMongoosePaginationOptions({
+      page,
+      limit,
+      customLabels: {
+        totalDocs: "totalVideos",
+        docs: "videos",
+      },
+    })
+  );
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, videos, "Channel videos fetched successfully"));
 });
 
 export { getChannelStats, getChannelVideos };
