@@ -19,7 +19,9 @@ const getAllVideos = asyncHandler(async (req, res) => {
   } = req.query;
 
   const pipeline = [];
-  const matchQuery = {};
+  const matchQuery = {
+    isPublished: true,
+  };
 
   if (query?.length > 0) {
     matchQuery.$or = [
@@ -187,6 +189,13 @@ const getVideoById = asyncHandler(async (req, res) => {
 
   if (!video) {
     throw new ApiError(404, "Video does not exist");
+  }
+
+  if (
+    !video.isPublished &&
+    video.owner._id.toString() !== req.user._id.toString()
+  ) {
+    throw new ApiError(403, "Video is no longer available for public access.");
   }
 
   video.views++;
